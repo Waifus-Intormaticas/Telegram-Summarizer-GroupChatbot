@@ -96,16 +96,12 @@ func main() {
 				continue
 			}
 
-			summary, err :=
-				// Primero intento con GEMINI, si falla intento con GIPITI
-				waifuSummaryGEMINI(update.Message.Text)
-			if err != nil {
-				log.Printf("Error con GEMINI: %v", err)
-
-				summary, err =
-					// Si falla GEMINI, intento con GIPITI
-					waifuSummaryGIPITI(update.Message.Text)
-				if err != nil {
+			// Primero intento con GEMINI, si falla intento con GIPITI
+			summary, _ := waifuSummaryGEMINI(update.Message.Text)
+			if summary == "" {
+				// Si falla GEMINI, intento con GIPITI
+				summary, _ = waifuSummaryGIPITI(update.Message.Text)
+				if summary == "" {
 					log.Printf("Error con GIPITI: %v", err)
 					msg.Text = "Eh, no quiero resumir nada largate. **Se duerme**."
 					bot.Send(msg)
@@ -158,7 +154,7 @@ func waifuSummaryGEMINI(message string) (string, error) {
 	GEMINI_API_KEY := os.Getenv("GEMINI_API_KEY")
 	if GEMINI_API_KEY == "" {
 		log.Println("El GEMINI_API_KEY no se encontró")
-		return "El GEMINI_API_KEY no se encontró", nil
+		return "", nil
 	}
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, nil)
@@ -174,7 +170,8 @@ func waifuSummaryGEMINI(message string) (string, error) {
 	)
 
 	if err != nil {
-		return "Error al generar el resumen con GEMINI", err
+		log.Printf("Error al generar el resumen con GEMINI: %v", err)
+		return "", err
 	}
 
 	return result.Text(), nil
@@ -186,7 +183,7 @@ func waifuSummaryGIPITI(message string) (string, error) {
 	OPENAI_API_KEY := os.Getenv("OPENAI_API_KEY")
 	if OPENAI_API_KEY == "" {
 		log.Println("El OPENAI_API_KEY no se encontró")
-		return "El OPENAI_API_KEY no se encontró", nil
+		return "", nil
 	}
 	client := openai.NewClient()
 	chatCompletion, err := client.Chat.Completions.New(context.Background(),
@@ -200,7 +197,8 @@ func waifuSummaryGIPITI(message string) (string, error) {
 		})
 
 	if err != nil {
-		return "Error al generar el resumen con GIPITI", err
+		log.Printf("Error al generar el resumen con GIPITI: %v", err)
+		return "", err
 	}
 
 	return chatCompletion.Choices[0].Message.Content, nil

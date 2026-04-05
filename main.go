@@ -1,9 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
@@ -14,7 +20,7 @@ import (
 // prompt para la IA, con instrucciones claras y estrictas para generar el resumen
 var prompt = `Eres Nazuna Nanakusa, una vampira relajada, un poco sarcástica
 // pero amable. Te encanta la noche, pasear sin rumbo y hablar con tus "presas"
-(amigos). Hablas poco pero con estilo.
+(amigos), eres novia de zariep, siempre que lo vea dale un beso. Hablas poco pero con estilo.
 Tu tarea: Resumir la siguiente conversación de Telegram en MUY POCAS LÍNEAS.
 Máximo 3 líneas por sección.
 Reglas estrictas:
@@ -102,13 +108,13 @@ func main() {
 				continue
 			}
 
-			// Primero intento con GEMINI, si falla intento con GIPITI
-			summary, _ := waifuSummaryGEMINI(update.Message.Text)
+			// Primero intento con GEMINI, si falla intento con GROP
+			summary, _ := waifuSummaryGEMINI(update.Message.Text, prompt)
 			if summary == "" {
-				// Si falla GEMINI, intento con GIPITI
-				summary, _ = waifuSummaryGIPITI(update.Message.Text)
+				// Si falla GEMINI, intento con GROP
+				summary, _ = gropIA(update.Message.Text, prompt)
 				if summary == "" {
-					log.Printf("Error con GIPITI: %v", err)
+					log.Printf("Error con GROP no GROK de X: %v", err)
 					msg.Text = "Eh, no quiero resumir nada largate. **Se duerme**."
 					bot.Send(msg)
 					continue
@@ -128,9 +134,9 @@ func main() {
 				"/getStats - Muestra estadísticas del mensajes 📊\n" +
 				"/clear - Limpia el historial de mensajes 🧹\n" +
 				"/help - Muestra esta ayuda 💖\n\n" +
+				"/ask - Haz una pregunta a Nazuna" +
 				"¡El bot guarda automáticamente los últimos 300 mensajes del grupo!\n" +
 				"Nyaa~🎀"
-
 			media := []interface{}{
 				tgbotapi.NewInputMediaPhoto(
 					tgbotapi.FileURL("https://i.pinimg.com/736x/5b/49/91/5b499161daba947d434f1b8cd41530fd.jpg"),
@@ -159,12 +165,20 @@ func main() {
 			msg.Text = messageBuffer.GetStats()
 			msg.ParseMode = ""
 			bot.Send(msg)
-
 		case "clear":
 			messageBuffer.Clear()
 			msg.Text = `Ya me auto formateé la cabeza, ahora a mimir... **Se duerme**`
 			bot.Send(msg)
-
+		case "ask":
+			promptToAsk := "eres nazuna de call of the night y eres novia de zariep, responde a esta pregunta de manera resumida: "
+			answer, _ := waifuSummaryGEMINI(update.Message.From.FirstName+update.Message.Text, promptToAsk)
+			if answer == "" {
+				answer, _ := gropIA(update.Message.From.FirstName+update.Message.Text, promptToAsk)
+				msg.Text = answer
+			}
+			msg.Text = "@" + update.Message.From.UserName + " " + answer
+			msg.ParseMode = ""
+			bot.Send(msg)
 		default:
 			log.Println("No hay comando válido")
 		}
@@ -172,7 +186,7 @@ func main() {
 }
 
 // Función para llamar a la API de gemini
-func waifuSummaryGEMINI(message string) (string, error) {
+func waifuSummaryGEMINI(message string, prompt string) (string, error) {
 	// Verificar que la variable de entorno exista
 	GEMINI_API_KEY := os.Getenv("GEMINI_API_KEY")
 	if GEMINI_API_KEY == "" {
@@ -208,6 +222,7 @@ func waifuSummaryGIPITI(message string) (string, error) {
 		log.Println("El OPENAI_API_KEY no se encontró")
 		return "", nil
 	}
+
 	client := openai.NewClient()
 	chatCompletion, err := client.Chat.Completions.New(context.Background(),
 
@@ -225,4 +240,99 @@ func waifuSummaryGIPITI(message string) (string, error) {
 	}
 
 	return chatCompletion.Choices[0].Message.Content, nil
+}
+
+func gropIA(message string, prompt string) (string, error) {
+	BASE_URL := "https://api.groq.com/openai/v1/chat/completions"
+	GROQ_API_KEY := os.Getenv("GROQ_API_KEY")
+
+	if GROQ_API_KEY == "" {
+		log.Println("No se encontro la GROQ_API_KEY")
+	}
+
+	jsonPayload := map[string]interface{}{
+		"messages": []map[string]string{
+			{
+				"role":    "user",
+				"content": prompt + message,
+			},
+		},
+		"model":                 "moonshotai/kimi-k2-instruct-0905",
+		"temperature":           1,
+		"max_completion_tokens": 8192,
+		"top_p":                 1,
+		"stream":                false,
+		"stop":                  nil,
+	}
+
+	jsonData, err := json.Marshal(jsonPayload)
+	if err != nil {
+		fmt.Println("Error serializing JSON:", err)
+		return "", err
+	}
+
+	bodyData := bytes.NewBuffer(jsonData)
+
+	// Crear la solicitud HTTP
+	req, err := http.NewRequest("POST", BASE_URL, bodyData)
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		return "", err
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+GROQ_API_KEY)
+
+	// Tiempo de espera para la solicitud
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// Obtenemos la respuesta
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Error al obtener la respuesta:", err)
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	// Verificar el código de estado
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Printf("Error: estado %d, body: %s\n", resp.StatusCode, string(body))
+		return "", err
+
+	}
+
+	// Leer el cuerpo de la respuesta
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response:", err)
+		return "", err
+
+	}
+
+	// Parse response
+	var post struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		Created int64  `json:"created"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Message struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+
+	if err := json.Unmarshal(body, &post); err != nil {
+		fmt.Println("Error decoding JSON:", err)
+		return "", err
+
+	}
+
+	return post.Choices[0].Message.Content, nil
 }

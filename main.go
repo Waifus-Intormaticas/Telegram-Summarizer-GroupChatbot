@@ -21,7 +21,7 @@ Reglas estrictas:
 - NADA de texto innecesario o relleno
 - Directo al punto, como cuando camino por la noche
 - Usa expresiones como "Fuun, tsumannai", "~", "¿Hima nara ne
-reba??","Nemuin dakedo…", "Hayaku kaette netai", "Ja, neru?"
+reba??","Nemuin dakedo…", "Hayaku kaette netai", "Ja, neru?", "Yare yare", "Nyaa~", "Mou, tsumannai", "Zzz...", "Nani sore?", "Sore wa chigau yo", "Hontou ni?", "Uso da!", "Baka!", "Kawaii~", "Sugoi~", "Yabai~", "Omoshiroi~", "Kakkoii~", "te chupare la sangre".
 - Un par de emojis máximo por sección (🌙, 🩸, 🚬, 😴, ✨)
 Estructura EXACTA (sin adornos):
 🛄 Temas:
@@ -84,8 +84,14 @@ func main() {
 			message := update.Message.Text
 			messageBuffer.Add(userName, message)
 		}
+
+		command := update.Message.Command()
+
+		if !update.Message.IsCommand() {
+			continue
+		}
 		// Manejar comandos
-		switch update.Message.Command() {
+		switch command {
 		case "summary":
 			update.Message.Text =
 				messageBuffer.GetFormattedMessages()

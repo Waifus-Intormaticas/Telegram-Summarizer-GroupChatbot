@@ -150,7 +150,7 @@ func main() {
 				bot.Send(msg)
 			}
 
-		case "getStats":
+		case "getstats":
 			if bufferMenssage.GetStats() == "" {
 				msg.Text = "No hay nada para ver aquí... Fuun, tsumannai..."
 			}
